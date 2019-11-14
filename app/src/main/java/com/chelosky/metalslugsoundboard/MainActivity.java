@@ -1,5 +1,6 @@
 package com.chelosky.metalslugsoundboard;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -34,14 +35,19 @@ public class MainActivity extends AppCompatActivity {
     RecyclerView.Adapter adapter;
     SoundPool soundPool;
     ImageView imageLogo;
-    boolean oldVersionFlag;
     LinearLayout progressBar;
+
+
+    boolean oldVersionFlag;//FLAG USED TO KNOW WHAT SOUNDS HAVE TO SHOW IN THE APP -> OLD SOUNDS OR NEW SOUNDS
+    private boolean runnableExecuted = false; // FLAG USED TO KNOW IF THE USER ARE HOLDING A BUTTON TO MAKE APPEAR THE DIALOG
+
     private final Handler mainHandler = new Handler();
-    private boolean runnableExecuted = false;
+
     public static ItemModel itemToSave;
-
+    /**
+     * RUNNABLE PARA CREAR UN DIALOG PARA DESCARGAR EL AUDIO
+     */
     private Runnable runnable = new Runnable() {
-
         @Override
         public void run() {
             runnableExecuted = true;
@@ -51,6 +57,10 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    /**
+     * COPY-PASTE > just request permission for writ in the external storage of the phone
+     * @return
+     */
     public  boolean isStoragePermissionGranted() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -73,21 +83,173 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        getSupportActionBar().hide();
         isStoragePermissionGranted();
-        oldVersionFlag = true;
-        progressBar = (LinearLayout)findViewById(R.id.progress_circular);
-        imageLogo = (ImageView)findViewById(R.id.logoApp);
-        soundPool = new SoundPool(1, AudioManager.STREAM_MUSIC,1);
-        recyclerView = (RecyclerView)findViewById(R.id.recycler);
-        listaModels = new ArrayList<>();
+        DefineInitialParameters();
         SetOldSounds();
-        recyclerView.setHasFixedSize(true);
-        //recyclerView.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL,false));
-        recyclerView.setLayoutManager(new GridLayoutManager(this,2));
+        SetRecyclerView();
         BindAdapterRecycler();
     }
 
+    /**
+     * Set the initials variables of the app
+     */
+    private void DefineInitialParameters(){
+        getSupportActionBar().hide();
+        oldVersionFlag = true;
+        listaModels = new ArrayList<>();
+        progressBar = (LinearLayout)findViewById(R.id.progress_circular);
+        imageLogo = (ImageView)findViewById(R.id.logoApp);
+        soundPool = new SoundPool(1, AudioManager.STREAM_MUSIC,1);
+    }
+
+    /**
+     * Set the logic of the recyclerview
+     */
+    private void SetRecyclerView(){
+        recyclerView = (RecyclerView)findViewById(R.id.recycler);
+        recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
+                super.onScrollStateChanged(recyclerView, newState);
+                switch (newState) {
+                    case RecyclerView.SCROLL_STATE_IDLE:
+                        //Toast.makeText(MainActivity.this,"The RecyclerView is not scrolling",Toast.LENGTH_SHORT).show();
+                        break;
+                    case RecyclerView.SCROLL_STATE_DRAGGING:
+                        runnableExecuted=false;
+                        mainHandler.removeCallbacks(runnable);
+                        //Toast.makeText(MainActivity.this,"Scrolling now",Toast.LENGTH_SHORT).show();
+                        break;
+                    case RecyclerView.SCROLL_STATE_SETTLING:
+                        runnableExecuted=false;
+                        mainHandler.removeCallbacks(runnable);
+                        //Toast.makeText(MainActivity.this,"Scroll Settling",Toast.LENGTH_SHORT).show();
+                        break;
+
+                }
+
+            }
+        });
+        recyclerView.setHasFixedSize(true);
+        //recyclerView.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL,false));
+        recyclerView.setLayoutManager(new GridLayoutManager(this,2));
+    }
+
+    /**
+     * Change the soundpool between old and new
+     * @param view
+     */
+    public void onRadioButtonClicked(View view) {
+        // Is the button now checked?
+        boolean checked = ((RadioButton) view).isChecked();
+        // Check which radio button was clicked
+        switch(view.getId()) {
+            case R.id.radio_old://for metal slug x
+                if (checked)
+                    if(!oldVersionFlag){
+                        imageLogo.setImageResource(R.drawable.logo1);
+                        UpdateActivityApp();
+                    }
+                    break;
+            case R.id.radio_new: //for metal slug x
+                if (checked)
+                    if(oldVersionFlag){
+                        imageLogo.setImageResource(R.drawable.titlogo);
+                        UpdateActivityApp();
+                    }
+                    break;
+        }
+    }
+
+    /**
+     * Update de view app. Change between progressbar and recyclerview
+     */
+    private void UpdateActivityApp(){
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                recyclerView.setVisibility(View.GONE);
+                progressBar.setVisibility(View.VISIBLE);
+                findViewById(R.id.radio_new).setEnabled(false);
+                findViewById(R.id.radio_old).setEnabled(false);
+            }
+        });
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                UpdateRecycleView();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        recyclerView.setVisibility(View.VISIBLE);
+                        progressBar.setVisibility(View.GONE);
+                        findViewById(R.id.radio_new).setEnabled(true);
+                        findViewById(R.id.radio_old).setEnabled(true);
+                    }
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * Update the list model of the recyclerview with the sounds old/new
+     */
+    private void UpdateRecycleView(){
+        listaModels.clear();
+        if(oldVersionFlag){
+            SetNewSounds();
+        }else{
+            SetOldSounds();
+        }
+        oldVersionFlag = !oldVersionFlag;
+        BindAdapterRecycler();
+    }
+
+    /**
+     * Bind the list with the adapter. Then bind with the recyclerview
+     */
+    private void BindAdapterRecycler(){
+        adapter = new ItemRecyclerView(listaModels);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                recyclerView.setAdapter(adapter);
+                /*((ItemRecyclerView) adapter).setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        ItemModel item = listaModels.get(recyclerView.getChildAdapterPosition(v));
+                        //Toast.makeText(MainActivity.this,"ONCLICK",Toast.LENGTH_SHORT).show();
+                        soundPool.play(item.getSoundItem(),1,1,1,0,0);
+                    }
+                });*/
+                ((ItemRecyclerView)adapter).setOnTouchListener(new View.OnTouchListener(){
+                    @Override
+                    public boolean onTouch(View v, MotionEvent event){
+                        ItemModel item = listaModels.get(recyclerView.getChildAdapterPosition(v));
+                        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                            // start timer
+                            runnableExecuted=false;
+                            MainActivity.itemToSave = item;
+                            mainHandler.postDelayed(runnable,600);
+                            //Toast.makeText(MainActivity.this,"TOUCH LISTENER: " + item.getNameItem(),Toast.LENGTH_SHORT).show();
+                        } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                            // stop timer.
+                            if(!runnableExecuted){
+                                mainHandler.removeCallbacks(runnable);
+                                soundPool.play(item.getSoundItem(),1,1,1,0,0);
+                            }
+                        }
+                        return false;
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * SET NEW SOUNDS -> METAL SLUG XX
+     */
     private void SetNewSounds(){
         listaModels.add(new ItemModel(R.drawable.g1_hgun,"XX_H_GUN",BindSoundItem(R.raw.xx_hgun),R.raw.xx_hgun));
         listaModels.add(new ItemModel(R.drawable.g2_fgun,"XX_F_GUN",BindSoundItem(R.raw.xx_fgun),R.raw.xx_fgun));
@@ -108,6 +270,9 @@ public class MainActivity extends AppCompatActivity {
         listaModels.add(new ItemModel(R.drawable.xx_okey,"XX_OKEY",BindSoundItem(R.raw.xx_okey),R.raw.xx_okey));
     }
 
+    /**
+     * SET THE OLD SOUNDS -> METAL SLUG 1/X
+     */
     private void SetOldSounds(){
         listaModels.add(new ItemModel(R.drawable.g1_hgun,"X_H_GUN",BindSoundItem(R.raw.x_hgun),R.raw.x_hgun));
         listaModels.add(new ItemModel(R.drawable.g2_fgun,"X_F_GUN",BindSoundItem(R.raw.x_fgun),R.raw.x_fgun));
@@ -129,108 +294,13 @@ public class MainActivity extends AppCompatActivity {
         listaModels.add(new ItemModel(R.drawable.x_okey,"X_OKEY",BindSoundItem(R.raw.x_okey),R.raw.x_okey));
     }
 
+    /**
+     * Bind the raw sound file with a item
+     * @param value is the id of the raw sound file
+     * @return the audio soundpool of the item
+     */
     private int BindSoundItem(int value){
         return soundPool.load(this,value,1);
     }
 
-    public void onRadioButtonClicked(View view) {
-        // Is the button now checked?
-        boolean checked = ((RadioButton) view).isChecked();
-
-        // Check which radio button was clicked
-        switch(view.getId()) {
-            case R.id.radio_old://x
-                if (checked)
-                    if(!oldVersionFlag){
-                        imageLogo.setImageResource(R.drawable.logo1);
-                        UpdateActivityApp();
-                    }
-                    break;
-            case R.id.radio_new: //xx
-                if (checked)
-                    if(oldVersionFlag){
-                        imageLogo.setImageResource(R.drawable.titlogo);
-                        UpdateActivityApp();
-                    }
-                    break;
-        }
-    }
-
-    private void UpdateRecycleView(){
-        listaModels.clear();
-        if(oldVersionFlag){
-            SetNewSounds();
-        }else{
-            SetOldSounds();
-        }
-        oldVersionFlag = !oldVersionFlag;
-        BindAdapterRecycler();
-    }
-
-    private void BindAdapterRecycler(){
-        adapter = new ItemRecyclerView(listaModels);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                recyclerView.setAdapter(adapter);
-                /*((ItemRecyclerView) adapter).setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        ItemModel item = listaModels.get(recyclerView.getChildAdapterPosition(v));
-                        //Toast.makeText(MainActivity.this,"ONCLICK",Toast.LENGTH_SHORT).show();
-                        soundPool.play(item.getSoundItem(),1,1,1,0,0);
-                    }
-                });*/
-                ((ItemRecyclerView)adapter).setOnTouchListener(new View.OnTouchListener(){
-                    @Override
-                    public boolean onTouch(View v, MotionEvent event){
-                        ItemModel item = listaModels.get(recyclerView.getChildAdapterPosition(v));
-                        if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                            // start your timer
-                            runnableExecuted=false;
-                            MainActivity.itemToSave = item;
-                            mainHandler.postDelayed(runnable,600);
-                            //Toast.makeText(MainActivity.this,"TOUCH LISTENER: " + item.getNameItem(),Toast.LENGTH_SHORT).show();
-                        } else if (event.getAction() == MotionEvent.ACTION_UP) {
-                            // stop your timer.
-                            if(!runnableExecuted){
-                                mainHandler.removeCallbacks(runnable);
-                                soundPool.play(item.getSoundItem(),1,1,1,0,0);
-                            }
-                        }
-                        return false;
-                    }
-                });
-            }
-        });
-    }
-
-    private void UpdateActivityApp(){
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                recyclerView.setVisibility(View.GONE);
-                progressBar.setVisibility(View.VISIBLE);
-                findViewById(R.id.radio_new).setEnabled(false);
-                findViewById(R.id.radio_old).setEnabled(false);
-            }
-        });
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                UpdateRecycleView();
-
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        recyclerView.setVisibility(View.VISIBLE);
-                        progressBar.setVisibility(View.GONE);
-                        findViewById(R.id.radio_new).setEnabled(true);
-                        findViewById(R.id.radio_old).setEnabled(true);
-                    }
-                });
-            }
-        }).start();
-    }
 }
